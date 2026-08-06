@@ -1229,37 +1229,37 @@
     state.ui.currentSku = Math.min(state.ui.currentSku, state.skus.length - 1);
     const skuIndex = state.ui.currentSku;
     const sku = state.skus[skuIndex];
-    const rows = filteredDefects(sku);
-    const total = sku.defects.reduce((sum, d) => sum + numeric(d.count), 0);
-    const categoryTotals = sku.defects.reduce((acc, d) => {
-      const category = ['defect', 'nonstandard', 'caliber'].includes(d.severity) ? d.severity : 'defect';
-      acc[category] += numeric(d.count);
-      return acc;
-    }, { defect: 0, nonstandard: 0, caliber: 0 });
-    return `${pageHeading('Реестр дефектов и некалибра', 'Укажите тип дефекта, текстовую визуальную оценку, количество единиц, категорию и комментарий. Процентная доля не используется.', `${skuStatusBadge(sku, skuIndex, true)}<button class="button button-primary" data-action="add-defect" ${sku.defects.length >= MAX_DEFECTS ? 'disabled' : ''}>+ Добавить запись</button>`)}
-      <div class="content-stack">
+    const rows = sku.defects.map((d, index) => ({ d, index }));
+    const productName = getSkuLabel(sku, skuIndex);
+    const productCode = String(sku.code || '').trim();
+    return `${pageHeading('Дефекты выбранного товара', 'Выберите товар и добавляйте только фактически выявленные дефекты. Если дефектов нет, оставьте список пустым.', `<button class="button button-primary" data-action="add-defect" ${sku.defects.length >= MAX_DEFECTS ? 'disabled' : ''}>+ Добавить дефект</button>`)}
+      <div class="content-stack defects-workspace">
         ${renderSkuTabs()}
-        <div class="kpi-grid">
-          <div class="kpi"><span>Записей</span><strong>${sku.defects.length}</strong><small>максимум ${MAX_DEFECTS}</small></div>
-          <div class="kpi"><span>Единиц в реестре</span><strong>${displayNumber(total, 0)}</strong><small>Брак ${displayNumber(categoryTotals.defect, 0)} · Нестандарт ${displayNumber(categoryTotals.nonstandard, 0)} · Некалибр ${displayNumber(categoryTotals.caliber, 0)}</small></div>
-          <div class="kpi"><span>Ошибки на качество</span><strong>${displayNumber(getAnswer(sku, '7.4').value, 0)}</strong><small>отдельный пункт чек-листа</small></div>
-          <div class="kpi"><span>Товар</span><strong style="font-size:16px">${escapeHtml(getSkuLabel(sku, skuIndex))}</strong><small>${escapeHtml(sku.code || 'код не указан')}</small></div>
-        </div>
-        <section class="card table-shell">
-          <div class="table-toolbar">
-            <input class="input" type="search" data-ui-field="defectSearch" value="${escapeAttr(state.ui.defectSearch)}" placeholder="Поиск по дефекту, визуальной оценке или комментарию"/>
-            <select class="select" data-ui-field="defectSeverity"><option value="all">Все категории</option><option value="defect" ${state.ui.defectSeverity === 'defect' ? 'selected' : ''}>Брак</option><option value="nonstandard" ${state.ui.defectSeverity === 'nonstandard' ? 'selected' : ''}>Нестандарт</option><option value="caliber" ${state.ui.defectSeverity === 'caliber' ? 'selected' : ''}>Некалибр</option></select>
-            <button class="button button-ghost" data-action="clear-defect-filters">Сбросить</button>
+        <section class="card defect-product-context">
+          <div class="defect-product-identity">
+            <span class="eyebrow">Выбранный товар</span>
+            <h3>${escapeHtml(productName)}</h3>
+            <p>${productCode ? `Код товара: <strong>${escapeHtml(productCode)}</strong>` : 'Код товара пока не указан'} · Позиция ${skuIndex + 1} из ${state.skus.length}</p>
           </div>
-          <div class="table-scroll">
-            ${rows.length ? `<table class="data-table"><thead><tr><th>Тип дефекта</th><th>Визуальная оценка</th><th>Кол-во единиц</th><th>Категория</th><th>Комментарий ДП</th><th></th></tr></thead><tbody>${rows.map(({ d, index }) => `<tr>
+          <div class="defect-product-state">${skuStatusBadge(sku, skuIndex, true)}</div>
+        </section>
+        <section class="card table-shell defect-editor-card">
+          <div class="defect-editor-head">
+            <div>
+              <span class="eyebrow">Дефекты товара</span>
+              <h3>${rows.length ? 'Заполните выявленные дефекты' : 'Дефекты не указаны'}</h3>
+              <p>${rows.length ? 'Для каждой записи укажите тип, визуальную оценку, количество единиц, категорию и комментарий.' : 'Если при проверке обнаружится дефект, добавьте его отдельной строкой.'}</p>
+            </div>
+          </div>
+          <div class="table-scroll defect-table-scroll">
+            ${rows.length ? `<table class="data-table defect-table"><thead><tr><th>Тип дефекта</th><th>Визуальная оценка</th><th>Кол-во единиц</th><th>Категория</th><th>Комментарий ДП</th><th></th></tr></thead><tbody>${rows.map(({ d, index }) => `<tr>
               <td data-label="Тип дефекта"><input class="input" data-defect-field="type" data-defect="${index}" data-sku="${skuIndex}" value="${escapeAttr(d.type || '')}" placeholder="Название дефекта"/></td>
               <td data-label="Визуальная оценка"><div class="defect-visual-control"><input class="input" type="text" maxlength="240" data-defect-field="visual" data-defect="${index}" data-sku="${skuIndex}" value="${escapeAttr(d.visual || '')}" placeholder="Напишите оценку или скопируйте тип дефекта"/><button class="defect-copy-button" type="button" data-action="copy-defect-type-to-visual" data-defect="${index}" data-sku="${skuIndex}" title="Скопировать из поля «Тип дефекта»" aria-label="Скопировать тип дефекта в визуальную оценку"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8V5.75A2.75 2.75 0 0 1 10.75 3h7.5A2.75 2.75 0 0 1 21 5.75v7.5A2.75 2.75 0 0 1 18.25 16H16v2.25A2.75 2.75 0 0 1 13.25 21h-7.5A2.75 2.75 0 0 1 3 18.25v-7.5A2.75 2.75 0 0 1 5.75 8H8Zm2 0h3.25A2.75 2.75 0 0 1 16 10.75V14h2.25c.414 0 .75-.336.75-.75v-7.5a.75.75 0 0 0-.75-.75h-7.5a.75.75 0 0 0-.75.75V8Zm3.25 2h-7.5a.75.75 0 0 0-.75.75v7.5c0 .414.336.75.75.75h7.5a.75.75 0 0 0 .75-.75v-7.5a.75.75 0 0 0-.75-.75Z"/></svg></button></div></td>
               <td data-label="Количество"><input class="input" type="number" min="0" step="1" data-defect-field="count" data-defect="${index}" data-sku="${skuIndex}" value="${escapeAttr(d.count ?? '')}" placeholder="0"/></td>
               <td data-label="Категория"><select class="select" data-defect-field="severity" data-defect="${index}" data-sku="${skuIndex}"><option value="defect" ${d.severity === 'defect' ? 'selected' : ''}>Брак</option><option value="nonstandard" ${d.severity === 'nonstandard' ? 'selected' : ''}>Нестандарт</option><option value="caliber" ${d.severity === 'caliber' ? 'selected' : ''}>Некалибр</option></select></td>
               <td data-label="Комментарий"><input class="input" data-defect-field="comment" data-defect="${index}" data-sku="${skuIndex}" value="${escapeAttr(d.comment || '')}" placeholder="Комментарий"/></td>
               <td data-label="Действия"><div class="row-actions"><button class="button button-danger button-small" data-action="remove-defect" data-defect="${index}" data-sku="${skuIndex}">Удалить</button></div></td>
-            </tr>`).join('')}</tbody></table>` : '<div class="empty-state"><strong>Нет записей по выбранным фильтрам</strong>Добавьте дефект или измените фильтры.</div>'}
+            </tr>`).join('')}</tbody></table>` : '<div class="empty-state defect-empty-state"><strong>У выбранного товара дефекты не указаны</strong><span>Добавляйте запись только при фактическом выявлении брака, нестандарта или некалибра.</span><button class="button button-primary" data-action="add-defect">+ Добавить первый дефект</button></div>'}
           </div>
         </section>
         <div class="button-row"><button class="button button-ghost" data-page="checklist">← К чек-листу</button><button class="button button-primary" data-page="summary">К итогам →</button></div>
