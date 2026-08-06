@@ -9,11 +9,11 @@
   <meta name="description" content="Дистанционная приёмка: до 5 параллельных чек-листов РЦ, точное время и выгрузка Excel." />
   <title>Дистанционная Приёмка — Магнит</title>
   <base href="./" />
-  <link rel="manifest" href="./manifest.webmanifest?v=59" />
-  <link rel="stylesheet" href="./styles.css?v=59" />
-  <link rel="stylesheet" href="./magnit-corporate.css?v=59" />
-  <link rel="stylesheet" href="./contrast-audit.css?v=59" />
-  <link rel="stylesheet" href="./v57-readability.css?v=59" />
+  <link rel="manifest" href="./manifest.webmanifest?v=60" />
+  <link rel="stylesheet" href="./styles.css?v=60" />
+  <link rel="stylesheet" href="./magnit-corporate.css?v=60" />
+  <link rel="stylesheet" href="./contrast-audit.css?v=60" />
+  <link rel="stylesheet" href="./v57-readability.css?v=60" />
 </head>
 <body class="auth-locked">
   <!-- Visible Magnit logos are embedded as data URIs for reliable GitHub Pages rendering. -->
@@ -54,10 +54,32 @@
               <button type="button" class="auth-toggle-pass" id="togglePassword" aria-label="Показать пароль">Показать</button>
             </div>
           </div>
+          <section class="auth-consent" id="privacyConsentBlock" aria-labelledby="privacyConsentTitle">
+            <div class="auth-consent-heading">
+              <div>
+                <span class="auth-consent-kicker">Первый вход</span>
+                <strong id="privacyConsentTitle">Политика использования и ответственности</strong>
+              </div>
+              <span class="auth-consent-version">Версия 1.0</span>
+            </div>
+            <div class="auth-consent-copy">
+              <p>Система предназначена только для внутренней работы с дистанционной приёмкой.</p>
+              <ul>
+                <li><strong>Локальное хранение.</strong> Основное рабочее состояние сохраняется в браузере на используемом устройстве и не отправляется автоматически. При запуске серверной выгрузки данные могут передаваться внутреннему обработчику текущего сайта исключительно для формирования Excel; в локальном режиме файл создаётся непосредственно в браузере.</li>
+                <li><strong>Ответственность пользователя.</strong> Пользователь отвечает за достоверность и полноту внесённых сведений, корректность выбранного РЦ и товарной позиции, а также за проверку сформированного Excel перед дальнейшим использованием.</li>
+                <li><strong>Конфиденциальность.</strong> Нельзя передавать логин, пароль, резервные копии, выгрузки и рабочие данные третьим лицам без разрешения. Пользователь обязан ограничить доступ к устройству и браузеру.</li>
+                <li><strong>Риски локального устройства.</strong> Локальное хранение не исключает риски доступа через общий компьютер, профиль браузера, расширения, вредоносное ПО или ручную передачу файлов.</li>
+              </ul>
+            </div>
+            <label class="auth-consent-check" for="privacyConsent">
+              <input id="privacyConsent" type="checkbox" />
+              <span>Я ознакомился с условиями, принимаю ответственность за введённые данные и подтверждаю соблюдение требований конфиденциальности.</span>
+            </label>
+          </section>
           <div class="auth-error" id="loginError" role="alert" aria-live="polite"></div>
-          <button class="button button-primary full auth-submit" type="submit">Войти в систему</button>
+          <button class="button button-primary full auth-submit" id="loginSubmit" type="submit" disabled>Войти в систему</button>
         </form>
-        <div class="auth-footnote"><span></span>Данные сессии хранятся только до закрытия браузера.</div>
+        <div class="auth-footnote"><span></span>Сессия авторизации действует до закрытия браузера. Принятие политики сохраняется локально для этой версии условий.</div>
       </section>
     </div>
   </div>
@@ -117,7 +139,7 @@
       <section class="workspace-switcher" id="workspaceBar" aria-label="Переключение между РЦ"></section>
 
       <section class="page-content" id="pageContent" aria-live="polite"></section>
-      <footer class="legal-footer">Внутренняя разработка подразделения дистанционной приёмки. Использование, копирование и передача решения третьим лицам допускаются только по предварительному двустороннему согласованию.</footer>
+      <footer class="legal-footer">Внутренняя разработка подразделения дистанционной приёмки. Использование, копирование и передача решения третьим лицам допускаются только по предварительному двустороннему согласованию. <button class="legal-link" id="openUsagePolicy" type="button">Политика использования</button></footer>
     </main>
   </div>
 
@@ -189,10 +211,10 @@
     </div>
   </div>
 
-  <script src="./vendor/exceljs.min.js?v=59"></script>
-  <script src="./template-data.js?v=59"></script>
-  <script src="./old-template-data.js?v=59"></script>
-  <script src="./theme-studio.js?v=59"></script>
-  <script src="./app.js?v=59"></script>
+  <script src="./vendor/exceljs.min.js?v=60"></script>
+  <script src="./template-data.js?v=60"></script>
+  <script src="./old-template-data.js?v=60"></script>
+  <script src="./theme-studio.js?v=60"></script>
+  <script src="./app.js?v=60"></script>
 </body>
 </html>

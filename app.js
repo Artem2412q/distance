@@ -9,6 +9,9 @@
   const AUTH_SESSION_KEY = 'magnit-dp-auth-v26';
   const AUTH_USER_B64 = 'bWFnbml0X2Rw';
   const AUTH_PASS_B64 = 'MTUwMjkxODQ=';
+  const POLICY_VERSION = '1.0';
+  const POLICY_ACCEPTANCE_KEY = 'magnit-dp-policy-consent-v1';
+  const POLICY_SESSION_KEY = 'magnit-dp-policy-consent-session-v1';
 
   const STEP_GROUPS = [
     { id: 0, title: 'Замер ВПТ', short: 'ВПТ', description: 'Фиксация фотографии и внутриплодной температуры.' },
@@ -260,10 +263,59 @@
   const notesTextarea = document.getElementById('notesTextarea');
   const modalBackdrop = document.getElementById('modalBackdrop');
   const loadingOverlay = document.getElementById('loadingOverlay');
+  const privacyConsentBlock = document.getElementById('privacyConsentBlock');
+  const privacyConsent = document.getElementById('privacyConsent');
+  const loginSubmit = document.getElementById('loginSubmit');
   let authenticated = sessionStorage.getItem(AUTH_SESSION_KEY) === '1';
 
   function decodeBase64(value) {
     try { return atob(value); } catch (_) { return ''; }
+  }
+
+  function readPolicyAcceptance() {
+    try {
+      const raw = localStorage.getItem(POLICY_ACCEPTANCE_KEY);
+      const value = raw ? JSON.parse(raw) : null;
+      if (value?.version === POLICY_VERSION && value?.accepted === true) return value;
+    } catch (_) {}
+    try {
+      if (sessionStorage.getItem(POLICY_SESSION_KEY) === POLICY_VERSION) {
+        return { version: POLICY_VERSION, accepted: true, sessionOnly: true };
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  function hasAcceptedPolicy() {
+    return Boolean(readPolicyAcceptance());
+  }
+
+  function savePolicyAcceptance(login) {
+    const record = {
+      accepted: true,
+      version: POLICY_VERSION,
+      acceptedAt: new Date().toISOString(),
+      login: String(login || '').trim(),
+      storage: 'local-browser',
+    };
+    try {
+      localStorage.setItem(POLICY_ACCEPTANCE_KEY, JSON.stringify(record));
+      return record;
+    } catch (_) {
+      try { sessionStorage.setItem(POLICY_SESSION_KEY, POLICY_VERSION); } catch (_) {}
+      return { ...record, sessionOnly: true };
+    }
+  }
+
+  function updatePolicyConsentUI() {
+    const accepted = hasAcceptedPolicy();
+    if (privacyConsentBlock) privacyConsentBlock.hidden = accepted;
+    if (privacyConsent) {
+      privacyConsent.checked = accepted;
+      privacyConsent.required = !accepted;
+    }
+    if (loginSubmit) loginSubmit.disabled = !accepted && !privacyConsent?.checked;
+    return accepted;
   }
 
   function setAuthenticated(isAuth) {
@@ -292,6 +344,12 @@
     const errorEl = document.getElementById('loginError');
     const login = (userInput?.value || '').trim();
     const password = passInput?.value || '';
+    const policyAlreadyAccepted = hasAcceptedPolicy();
+    if (!policyAlreadyAccepted && !privacyConsent?.checked) {
+      if (errorEl) errorEl.textContent = 'Для первого входа необходимо принять политику использования и ответственности.';
+      privacyConsent?.focus();
+      return;
+    }
     const loginOk = login === decodeBase64(AUTH_USER_B64);
     const passOk = password === decodeBase64(AUTH_PASS_B64);
     if (!loginOk || !passOk) {
@@ -300,11 +358,13 @@
       passInput?.select?.();
       return;
     }
+    if (!policyAlreadyAccepted) savePolicyAcceptance(login);
+    updatePolicyConsentUI();
     if (errorEl) errorEl.textContent = '';
     if (userInput) userInput.value = '';
     if (passInput) passInput.value = '';
     setAuthenticated(true);
-    toast('Авторизация выполнена.', 'success');
+    toast('Авторизация выполнена. Условия использования приняты.', 'success');
   }
 
   function logout() {
@@ -314,11 +374,18 @@
     const errorEl = document.getElementById('loginError');
     if (errorEl) errorEl.textContent = '';
     document.getElementById('loginForm')?.reset();
+    updatePolicyConsentUI();
     document.getElementById('loginUsername')?.focus();
   }
 
   function initAuth() {
     document.getElementById('loginForm')?.addEventListener('submit', handleLoginSubmit);
+    privacyConsent?.addEventListener('change', () => {
+      if (loginSubmit) loginSubmit.disabled = !privacyConsent.checked;
+      const errorEl = document.getElementById('loginError');
+      if (privacyConsent.checked && errorEl?.textContent.includes('политику')) errorEl.textContent = '';
+    });
+    updatePolicyConsentUI();
     document.getElementById('togglePassword')?.addEventListener('click', () => {
       const input = document.getElementById('loginPassword');
       const btn = document.getElementById('togglePassword');
@@ -2056,6 +2123,28 @@
     } else reveal();
   }
 
+  function usagePolicyHtml() {
+    return `<div class="policy-modal-copy">
+      <p><strong>Система предназначена только для внутренней работы с дистанционной приёмкой.</strong></p>
+      <ul>
+        <li><strong>Локальное хранение.</strong> Основное рабочее состояние сохраняется в браузере на используемом устройстве и не отправляется автоматически.</li>
+        <li><strong>Формирование Excel.</strong> При запуске серверной выгрузки данные могут передаваться внутреннему обработчику текущего сайта исключительно для формирования файла. В локальном режиме Excel создаётся в браузере.</li>
+        <li><strong>Ответственность пользователя.</strong> Пользователь отвечает за достоверность и полноту внесённых сведений, корректность выбранного РЦ и товара, а также за проверку итогового файла.</li>
+        <li><strong>Конфиденциальность.</strong> Нельзя передавать логин, пароль, резервные копии, выгрузки и рабочие данные третьим лицам без разрешения.</li>
+        <li><strong>Безопасность устройства.</strong> Пользователь обязан ограничить доступ к компьютеру и профилю браузера. Локальное хранение не исключает риски общего устройства, расширений, вредоносного ПО или ручной передачи файлов.</li>
+      </ul>
+      <p class="policy-modal-meta">Версия политики: ${escapeHtml(POLICY_VERSION)}</p>
+    </div>`;
+  }
+
+  function showUsagePolicy() {
+    document.getElementById('modalTitle').textContent = 'Политика использования и ответственности';
+    document.getElementById('modalBody').innerHTML = usagePolicyHtml();
+    document.getElementById('modalFooter').innerHTML = '<button class="button button-primary" id="policyModalClose" type="button">Понятно</button>';
+    modalBackdrop.hidden = false;
+    document.getElementById('policyModalClose').onclick = closeModal;
+  }
+
   function requestExport(exportType = 'new') {
     const validation = getValidation();
     if (!validation.errors.length && !validation.warnings.length) { exportExcel(exportType); return; }
@@ -2374,6 +2463,7 @@
     document.getElementById('modalClose').addEventListener('click', closeModal);
     modalBackdrop.addEventListener('click', e => { if (e.target === modalBackdrop) closeModal(); });
     document.getElementById('loadingCancel').addEventListener('click', cancelExport);
+    document.getElementById('openUsagePolicy')?.addEventListener('click', showUsagePolicy);
     ['exportOldTop'].forEach(id => document.getElementById(id)?.addEventListener('click', () => requestExport('old')));
     window.addEventListener('resize', () => { if (window.innerWidth <= 820) { notesPanel.style.left = ''; notesPanel.style.top = ''; notesPanel.style.right = ''; notesPanel.style.bottom = ''; } });
     initNotesDragging();
