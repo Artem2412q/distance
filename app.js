@@ -239,6 +239,7 @@
     ui: {
       page: 'shipment', currentSku: 0, checkStep: 0, defectSearch: '', defectSeverity: 'all',
       notesOpen: false, notesPinned: true, notesMinimized: false, notesPosition: null,
+      expandedCompletedSections: {},
     },
     updatedAt: new Date().toISOString(),
   });
@@ -568,7 +569,13 @@
       version: 25,
       shipment: { ...base.shipment, ...(raw.shipment || {}), format: ['Онлайн', 'Архив'].includes(raw.shipment?.format) ? raw.shipment.format : 'Онлайн' },
       skus: Array.isArray(raw.skus) && raw.skus.length ? raw.skus.slice(0, MAX_SKU).map(migrateSku) : [defaultSku()],
-      ui: (() => { const { theme: _legacyTheme, ...savedUi } = raw.ui || {}; return { ...base.ui, ...savedUi, page: PAGE_META[raw.ui?.page] ? raw.ui.page : 'shipment' }; })(),
+      ui: (() => {
+        const { theme: _legacyTheme, ...savedUi } = raw.ui || {};
+        const expandedCompletedSections = savedUi.expandedCompletedSections && typeof savedUi.expandedCompletedSections === 'object'
+          ? savedUi.expandedCompletedSections
+          : {};
+        return { ...base.ui, ...savedUi, expandedCompletedSections, page: PAGE_META[raw.ui?.page] ? raw.ui.page : 'shipment' };
+      })(),
     };
   }
 
@@ -620,6 +627,63 @@
   }
   function saveNow() { persistWorkspace(); }
 
+  function completedSectionStore() {
+    if (!state.ui.expandedCompletedSections || typeof state.ui.expandedCompletedSections !== 'object') {
+      state.ui.expandedCompletedSections = {};
+    }
+    return state.ui.expandedCompletedSections;
+  }
+  function isCompletedSectionExpanded(key) { return Boolean(completedSectionStore()[key]); }
+  function adaptiveSectionExpanded(key, complete) {
+    if (!complete) { delete completedSectionStore()[key]; return true; }
+    return isCompletedSectionExpanded(key);
+  }
+  function completedSectionKey(...parts) { return parts.filter(part => part !== undefined && part !== null).join(':'); }
+  function adaptiveSectionToggle(key, expanded, label = 'заполненный раздел') {
+    return `<button type="button" class="button button-ghost button-small adaptive-section-toggle" data-action="toggle-completed-section" data-section-key="${escapeAttr(key)}" aria-expanded="${expanded}" aria-label="${expanded ? 'Свернуть' : 'Развернуть'} ${escapeAttr(label)}"><span>${expanded ? 'Свернуть' : 'Развернуть'}</span><i aria-hidden="true">⌄</i></button>`;
+  }
+  function renderAdaptiveSection({ key, title, subtitle = '', content = '', complete = false, progress = 0, eyebrow = '', meta = '', className = 'card card-pad' }) {
+    const expanded = adaptiveSectionExpanded(key, complete);
+    const stateText = complete ? '100% · заполнено' : `${Math.max(0, Math.min(100, Math.round(progress || 0)))}%`;
+    return `<section class="${className} adaptive-section ${complete ? 'is-complete' : 'is-incomplete'} ${expanded ? 'is-expanded' : 'is-collapsed'}" data-adaptive-section="${escapeAttr(key)}" data-adaptive-complete="${complete}">
+      <div class="adaptive-section-head">
+        <div class="adaptive-section-heading"><span class="adaptive-section-indicator ${complete ? 'is-complete' : ''}">${complete ? '✓' : ''}</span><div>${eyebrow ? `<span class="eyebrow">${escapeHtml(eyebrow)}</span>` : ''}<h3 class="card-title">${escapeHtml(title)}</h3>${subtitle ? `<p class="card-subtitle">${escapeHtml(subtitle)}</p>` : ''}</div></div>
+        <div class="adaptive-section-actions">${meta}<span class="adaptive-section-progress ${complete ? 'is-complete' : ''}">${stateText}</span>${complete ? adaptiveSectionToggle(key, expanded, title) : ''}</div>
+      </div>
+      <div class="adaptive-section-content">${content}</div>
+    </section>`;
+  }
+  function sectionProgress(values) {
+    const total = values.length;
+    const done = values.filter(Boolean).length;
+    return { done, total, percent: total ? Math.round(done / total * 100) : 100, complete: total ? done === total : true };
+  }
+  function shipmentMainSectionProgress(targetState = state) {
+    const s = targetState.shipment || {};
+    return sectionProgress([s.id, s.rc, s.date, s.supplier, s.format, s.mokk, s.dpId].map(value => Boolean(String(value || '').trim())));
+  }
+  function shipmentStartSectionProgress(targetState = state) {
+    const s = targetState.shipment || {};
+    return sectionProgress([s.connectionTime, s.acceptanceStart].map(value => Boolean(String(value || '').trim())));
+  }
+  function finalMassSectionProgress(sku = {}) {
+    const categoryFields = ['defectMass', 'nonstandardMass', 'caliberMass', 'debrisMass'];
+    const sample = numeric(sku.sampleMass);
+    const total = categoryFields.reduce((sum, field) => sum + numeric(sku[field]), 0);
+    const checks = [
+      hasNumber(sku.vpt),
+      hasNumber(sku.sampleMass) && sample > 0,
+      ...categoryFields.map(field => hasNumber(sku[field]) && numeric(sku[field]) >= 0),
+      sample > 0 && total <= sample + 0.0001,
+    ];
+    if (sku.requiresBrix) checks.push(isValidBrixValues(sku.brixValues));
+    return sectionProgress(checks);
+  }
+  function completionTimesProgress(targetState = state) {
+    const s = targetState.shipment || {};
+    return sectionProgress([s.acceptanceEnd, s.reportEnd].map(value => Boolean(String(value || '').trim())));
+  }
+
 
   function getSkuLabel(sku, index) { return sku.name || sku.code || `Товар ${index + 1}`; }
   function isDefectRowComplete(row = {}) {
@@ -634,13 +698,15 @@
     const defectRows = Array.isArray(sku.defects) ? sku.defects : [];
     const completedDefectRows = defectRows.filter(isDefectRowComplete).length;
     const hasDefectUnits = defectRows.some(row => numeric(row.count) > 0);
-    const categoryMass = numeric(sku.defectMass) + numeric(sku.nonstandardMass) + numeric(sku.caliberMass) + numeric(sku.debrisMass);
+    const categoryFields = ['defectMass', 'nonstandardMass', 'caliberMass', 'debrisMass'];
+    const categoryMass = categoryFields.reduce((sum, field) => sum + numeric(sku[field]), 0);
+    const categoryFieldsDone = categoryFields.filter(field => hasNumber(sku[field]) && numeric(sku[field]) >= 0).length;
     const sampleMass = numeric(sku.sampleMass);
     const identityDone = Number(Boolean(String(sku.code || '').trim())) + Number(Boolean(String(sku.name || '').trim()));
     const brixRequired = Boolean(sku.requiresBrix);
     const brixDone = !brixRequired || isValidBrixValues(sku.brixValues);
-    const summaryDone = Number(Boolean(String(sku.vpt || '').trim())) + Number(sampleMass > 0) + Number(brixDone);
-    const total = 2 + applicable.length + 3 + defectRows.length;
+    const summaryDone = Number(Boolean(String(sku.vpt || '').trim())) + Number(sampleMass > 0) + categoryFieldsDone + Number(brixDone);
+    const total = 2 + applicable.length + 7 + defectRows.length;
     const done = identityDone + answered.length + summaryDone + completedDefectRows;
     const progress = total ? Math.min(100, Math.round(done / total * 100)) : 0;
     const hasActivity = Boolean(
@@ -654,15 +720,17 @@
     if (answered.length < applicable.length) blockers.push(`чек-лист ${answered.length}/${applicable.length}`);
     if (!String(sku.vpt || '').trim()) blockers.push('не указана ВПТ');
     if (sampleMass <= 0) blockers.push('нет массы выборки');
+    if (categoryFieldsDone < categoryFields.length) blockers.push(`массы категорий ${categoryFieldsDone}/${categoryFields.length}`);
     if (sampleMass > 0 && categoryMass > sampleMass + 0.0001) blockers.push('массы категорий превышают выборку');
     if (!brixDone) blockers.push('не заполнен Brix');
     if (completedDefectRows < defectRows.length) blockers.push('есть незавершённые записи дефектов');
     const issueCount = negativeAnswers.length + Number(qualityErrors > 0) + Number(hasDefectUnits) + Number(sku.apmError === 'yes');
+    const activeProgress = blockers.length ? Math.min(progress, 99) : 100;
     if (!hasActivity) return { key: 'not-started', label: 'Не начата', detail: 'Позиция ещё не заполнялась', progress: 0, issueCount, blockers };
     if (!blockers.length && issueCount > 0) return { key: 'ready-warning', label: 'Готова с замечаниями', detail: `${issueCount} сигнал${issueCount === 1 ? '' : issueCount < 5 ? 'а' : 'ов'} для проверки`, progress: 100, issueCount, blockers };
     if (!blockers.length) return { key: 'ready', label: 'Готова', detail: 'Все обязательные данные заполнены', progress: 100, issueCount, blockers };
-    if (issueCount > 0) return { key: 'attention', label: 'Есть нарушения', detail: `${blockers.length} незавершённых блоков · ${issueCount} замечаний`, progress, issueCount, blockers };
-    return { key: 'in-progress', label: 'В работе', detail: blockers.slice(0, 2).join(' · '), progress, issueCount, blockers };
+    if (issueCount > 0) return { key: 'attention', label: 'Есть нарушения', detail: `${blockers.length} незавершённых блоков · ${issueCount} замечаний`, progress: activeProgress, issueCount, blockers };
+    return { key: 'in-progress', label: 'В работе', detail: blockers.slice(0, 2).join(' · '), progress: activeProgress, issueCount, blockers };
   }
   function skuStatusBadge(sku, index, compact = false) {
     const status = getSkuStatus(sku, index);
@@ -744,9 +812,13 @@
     defectsTotal = Math.max(1, defectsTotal);
 
     const brixSkus = targetState.skus.filter(sku => sku.requiresBrix);
-    const summaryTotal = 2 + Math.max(1, targetState.skus.length) + brixSkus.length;
+    const summaryFieldsPerSku = 6;
+    const summaryTotal = 2 + Math.max(1, targetState.skus.length) * summaryFieldsPerSku + brixSkus.length;
     const summaryDone = Number(Boolean(shipment.acceptanceEnd)) + Number(Boolean(shipment.reportEnd))
-      + targetState.skus.filter(sku => numeric(sku.sampleMass) > 0).length
+      + targetState.skus.reduce((sum, sku) => sum
+        + Number(hasNumber(sku.vpt))
+        + Number(hasNumber(sku.sampleMass) && numeric(sku.sampleMass) > 0)
+        + ['defectMass', 'nonstandardMass', 'caliberMass', 'debrisMass'].filter(field => hasNumber(sku[field]) && numeric(sku[field]) >= 0).length, 0)
       + brixSkus.filter(sku => isValidBrixValues(sku.brixValues)).length;
 
     const make = (done, total) => ({
@@ -1049,28 +1121,40 @@
 
   function renderShipment() {
     const s = state.shipment;
-    return `${pageHeading('Данные поставки', 'Заполните реквизиты поставки. Время хранится с точностью до минуты и синхронизируется с датой приёмки.', '<button class="button button-primary" data-page="products">К товарам →</button>')}
+    const mainProgress = shipmentMainSectionProgress();
+    const startProgress = shipmentStartSectionProgress();
+    const mainSection = renderAdaptiveSection({
+      key: completedSectionKey('shipment', 'main'),
+      title: 'Основные сведения',
+      subtitle: 'Данные попадут в итоговый файл Excel.',
+      complete: mainProgress.complete,
+      progress: mainProgress.percent,
+      content: `<div class="grid grid-3">
+        ${field('Номер заявки / поставки', 'shipment.id', s.id, 'text', { required: true, placeholder: 'Например: 828389Y8827878' })}
+        ${rcSelectField(s.rc)}
+        ${field('Дата приёмки', 'shipment.date', s.date, 'date', { required: true })}
+        ${field('Поставщик', 'shipment.supplier', s.supplier, 'text', { required: true, placeholder: 'Полное наименование' })}
+        ${selectField('Формат приёмки', 'shipment.format', s.format, [{ value: 'Онлайн', label: 'Онлайн' }, { value: 'Архив', label: 'Архив' }], true)}
+        ${field('МОКК', 'shipment.mokk', s.mokk, 'text', { required: true, placeholder: 'ФИО или идентификатор' })}
+        ${field('ДП (ID)', 'shipment.dpId', s.dpId, 'text', { required: true, placeholder: 'ФИО / ID сотрудника' })}
+      </div>`,
+    });
+    const startSection = renderAdaptiveSection({
+      key: completedSectionKey('shipment', 'start'),
+      title: 'Начало работы',
+      subtitle: 'Окончание приёмки и отчёта фиксируется на странице итогов.',
+      complete: startProgress.complete,
+      progress: startProgress.percent,
+      content: `<div class="timer-grid shipment-timer-grid">
+        ${timerCard('Время подключения', 'connectionTime', 'Переносится в верхнюю часть Excel.', { required: true })}
+        ${timerCard('Начало приёмки', 'acceptanceStart', 'Можно зафиксировать отдельно от подключения.', { required: true })}
+      </div>`,
+    });
+    return `${pageHeading('Данные поставки', 'Заполненные на 100% разделы автоматически сворачиваются. Их всегда можно открыть повторно.', '<button class="button button-primary" data-page="products">К товарам →</button>')}
       <div class="content-stack">
         <div class="notice notice-strong"><strong>Быстрый порядок:</strong> реквизиты → товары → чек-лист → дефекты → Excel. Поля сохраняются автоматически.</div>
-        <section class="card card-pad">
-          <div class="section-head"><div><h3 class="card-title">Основные сведения</h3><p class="card-subtitle">Данные попадут в итоговый файл Excel.</p></div></div>
-          <div class="grid grid-3">
-            ${field('Номер заявки / поставки', 'shipment.id', s.id, 'text', { required: true, placeholder: 'Например: 828389Y8827878' })}
-            ${rcSelectField(s.rc)}
-            ${field('Дата приёмки', 'shipment.date', s.date, 'date', { required: true })}
-            ${field('Поставщик', 'shipment.supplier', s.supplier, 'text', { required: true, placeholder: 'Полное наименование' })}
-            ${selectField('Формат приёмки', 'shipment.format', s.format, [{ value: 'Онлайн', label: 'Онлайн' }, { value: 'Архив', label: 'Архив' }], true)}
-            ${field('МОКК', 'shipment.mokk', s.mokk, 'text', { required: true, placeholder: 'ФИО или идентификатор' })}
-            ${field('ДП (ID)', 'shipment.dpId', s.dpId, 'text', { required: true, placeholder: 'ФИО / ID сотрудника' })}
-          </div>
-        </section>
-        <section class="card card-pad">
-          <div class="section-head"><div><h3 class="card-title">Начало работы</h3><p class="card-subtitle">Окончание приёмки и отчёта фиксируется на странице итогов.</p></div></div>
-          <div class="timer-grid shipment-timer-grid">
-            ${timerCard('Время подключения', 'connectionTime', 'Переносится в верхнюю часть Excel.', { required: true })}
-            ${timerCard('Начало приёмки', 'acceptanceStart', 'Можно зафиксировать отдельно от подключения.', { required: true })}
-          </div>
-        </section>
+        ${mainSection}
+        ${startSection}
       </div>`;
   }
 
@@ -1091,16 +1175,19 @@
 
   function renderProductCard(sku, index) {
     const status = getSkuStatus(sku, index);
-    return `<article class="card product-card sku-status-${status.key}" data-product-card="${index}">
+    const complete = ['ready', 'ready-warning'].includes(status.key);
+    const sectionKey = completedSectionKey('product', sku.id || index);
+    const expanded = adaptiveSectionExpanded(sectionKey, complete);
+    return `<article class="card product-card sku-status-${status.key} adaptive-section ${complete ? 'is-complete' : 'is-incomplete'} ${expanded ? 'is-expanded' : 'is-collapsed'}" data-product-card="${index}" data-adaptive-section="${escapeAttr(sectionKey)}" data-adaptive-complete="${complete}">
       <div class="product-card-head">
         <div class="product-title"><span class="product-number">${index + 1}</span><div><strong>${escapeHtml(getSkuLabel(sku, index))}</strong><span>${escapeHtml(sku.code ? `Код ${sku.code}` : 'Код не указан')}</span></div></div>
-        <div class="product-head-actions">${skuStatusBadge(sku, index)}<div class="button-row">
+        <div class="product-head-actions">${skuStatusBadge(sku, index)}${complete ? adaptiveSectionToggle(sectionKey, expanded, getSkuLabel(sku, index)) : ''}<div class="button-row product-management-actions">
           <button class="button button-ghost button-small" data-action="move-sku" data-sku="${index}" data-delta="-1" ${index === 0 ? 'disabled' : ''}>↑</button>
           <button class="button button-ghost button-small" data-action="move-sku" data-sku="${index}" data-delta="1" ${index === state.skus.length - 1 ? 'disabled' : ''}>↓</button>
           <button class="button button-danger button-small" data-action="remove-sku" data-sku="${index}" ${state.skus.length === 1 ? 'disabled' : ''}>Удалить</button>
         </div></div>
       </div>
-      <div class="product-card-body">
+      <div class="product-card-body adaptive-section-content">
         <div class="subsection">
           <div class="subsection-title">Товарная позиция</div>
           <div class="grid grid-3">
@@ -1195,6 +1282,9 @@
     const stats = getChecklistStats();
     const stepDone = questions.filter(question => isAnswered(sku, question)).length;
     const stepPercent = questions.length ? Math.round(stepDone / questions.length * 100) : 100;
+    const stepComplete = stepPercent === 100;
+    const stepSectionKey = completedSectionKey('checklist', sku.id || skuIndex, step.id);
+    const stepExpanded = adaptiveSectionExpanded(stepSectionKey, stepComplete);
     return `${pageHeading('Пошаговый чек-лист', 'Работайте по этапам: система сохраняет ответы, время и прогресс отдельно для каждого РЦ и каждой товарной позиции.', `${skuStatusBadge(sku, skuIndex, true)}<span class="button button-ghost checklist-progress-chip" data-checklist-progress>${stats.done} / ${stats.total} · ${stats.percent}%</span>`)}
       <div class="content-stack checklist-workspace">
         ${renderSkuTabs()}
@@ -1206,10 +1296,13 @@
             const status = getStepState(sku, item.id);
             return `<button class="step-button ${index === state.ui.checkStep ? 'active' : ''} ${status}" data-action="select-step" data-step="${index}"><span class="step-number">${index + 1}</span><span class="step-copy"><span class="step-label">${escapeHtml(item.short)}</span><small>${done} из ${stepQuestions.length}</small></span><span class="step-status ${status === 'done' ? 'done' : ''}">${status === 'done' ? '✓' : `${percent}%`}</span><i><b style="width:${percent}%"></b></i></button>`;
           }).join('')}</aside>
-          <div class="check-main">
-            <div class="step-head"><div class="step-head-row"><div><span class="eyebrow">Шаг ${step.id + 1} из ${STEP_GROUPS.length}</span><h3>${escapeHtml(step.title)}</h3><p>${escapeHtml(step.description)}</p></div><div class="step-counter"><strong>${stepPercent}%</strong><small>${stepDone} из ${questions.length} · ${escapeHtml(getSkuLabel(sku, skuIndex))}</small></div></div><div class="step-progress-track"><i style="width:${stepPercent}%"></i></div><div class="step-quick-actions"><button class="button button-ghost button-small" data-action="complete-step">✓ Выполнить пункты шага</button><button class="button button-ghost button-small" data-action="go-unanswered">Найти незаполненное</button></div></div>
+          <div class="check-main adaptive-step-section ${stepComplete ? 'is-complete' : 'is-incomplete'} ${stepExpanded ? 'is-expanded' : 'is-collapsed'}" data-adaptive-section="${escapeAttr(stepSectionKey)}" data-adaptive-complete="${stepComplete}">
+            ${stepComplete ? `<div class="adaptive-step-collapsed"><div><span class="adaptive-section-indicator is-complete">✓</span><div><span class="eyebrow">Шаг ${step.id + 1} из ${STEP_GROUPS.length}</span><h3>${escapeHtml(step.title)}</h3><p>Все ${questions.length} пунктов заполнены. Раздел скрыт, чтобы не занимать рабочее пространство.</p></div></div>${adaptiveSectionToggle(stepSectionKey, false, step.title)}</div>` : ''}
+            <div class="adaptive-step-content">
+            <div class="step-head"><div class="step-head-row"><div><span class="eyebrow">Шаг ${step.id + 1} из ${STEP_GROUPS.length}</span><h3>${escapeHtml(step.title)}</h3><p>${escapeHtml(step.description)}</p></div><div class="step-counter"><strong>${stepPercent}%</strong><small>${stepDone} из ${questions.length} · ${escapeHtml(getSkuLabel(sku, skuIndex))}</small></div></div><div class="step-progress-track"><i style="width:${stepPercent}%"></i></div><div class="step-quick-actions"><button class="button button-ghost button-small" data-action="complete-step">✓ Выполнить пункты шага</button><button class="button button-ghost button-small" data-action="go-unanswered">Найти незаполненное</button>${stepComplete ? adaptiveSectionToggle(stepSectionKey, true, step.title) : ''}</div></div>
             <div class="question-list">${questions.length ? questions.map(q => renderQuestion(sku, skuIndex, q)).join('') : '<div class="card empty-state"><strong>Контроль выключен</strong>Для этой товарной позиции на шаге нет активных пунктов.</div>'}</div>
             <div class="step-nav"><button class="button button-ghost" data-action="previous-step" ${state.ui.checkStep === 0 ? 'disabled' : ''}>← Предыдущий шаг</button><button class="button button-primary" data-action="next-step">${state.ui.checkStep === STEP_GROUPS.length - 1 ? 'К реестру дефектов →' : 'Следующий шаг →'}</button></div>
+            </div>
           </div>
         </div>
       </div>`;
@@ -1285,8 +1378,12 @@
     const sku = state.skus[index];
     const total = numeric(sku.defectMass) + numeric(sku.nonstandardMass) + numeric(sku.caliberMass) + numeric(sku.debrisMass);
     const quality = Math.max(0, numeric(sku.sampleMass) - total);
-    return `<section class="card card-pad final-mass-section">
-      <div class="section-head"><div><span class="eyebrow">Финальный этап</span><h3 class="card-title">Итоговые массы и категории</h3><p class="card-subtitle">Заполните после завершения контроля. Показана одна товарная позиция — длинный список листать не нужно.</p></div><span class="viz-badge">${index + 1} / ${state.skus.length}</span></div>
+    const massProgress = finalMassSectionProgress(sku);
+    const sectionKey = completedSectionKey('summary-mass', sku.id || index);
+    const expanded = adaptiveSectionExpanded(sectionKey, massProgress.complete);
+    return `<section class="card card-pad final-mass-section adaptive-section ${massProgress.complete ? 'is-complete' : 'is-incomplete'} ${expanded ? 'is-expanded' : 'is-collapsed'}" data-adaptive-section="${escapeAttr(sectionKey)}" data-adaptive-complete="${massProgress.complete}">
+      <div class="adaptive-section-head"><div class="adaptive-section-heading"><span class="adaptive-section-indicator ${massProgress.complete ? 'is-complete' : ''}">${massProgress.complete ? '✓' : ''}</span><div><span class="eyebrow">Финальный этап</span><h3 class="card-title">Итоговые массы и категории</h3><p class="card-subtitle">Заполните после завершения контроля. Показана одна товарная позиция — длинный список листать не нужно.</p></div></div><div class="adaptive-section-actions"><span class="viz-badge">${index + 1} / ${state.skus.length}</span><span class="adaptive-section-progress ${massProgress.complete ? 'is-complete' : ''}">${massProgress.percent}%</span>${massProgress.complete ? adaptiveSectionToggle(sectionKey, expanded, 'Итоговые массы и категории') : ''}</div></div>
+      <div class="adaptive-section-content">
       <div class="final-mass-tabs" role="tablist">${state.skus.map((item, i) => `<button type="button" class="sku-tab ${i === index ? 'active' : ''}" data-action="select-summary-sku" data-sku="${i}"><span>${i + 1}</span>${escapeHtml(getSkuLabel(item, i))}</button>`).join('')}</div>
       <div class="final-mass-card" data-final-mass-card="${index}">
         <div class="final-mass-product"><div><strong>${escapeHtml(getSkuLabel(sku, index))}</strong><small>${escapeHtml(sku.code ? `Код ${sku.code}` : 'Код не указан')}</small></div><div class="final-mass-total"><span>ВПТ</span><strong>${hasNumber(sku.vpt) ? `${displayNumber(sku.vpt, 1)} °C` : 'Не указана'}</strong></div></div>
@@ -1312,6 +1409,7 @@
         </div>
         ${massAssistantMarkup(sku, index)}
       </div>
+      </div>
     </section>`;
   }
 
@@ -1330,14 +1428,21 @@
           ${kpi('Чек-лист', `${stats.done}/${stats.total}`, `${stats.percent}% заполнено`, stats.percent === 100 ? 'status-good' : 'status-warn')}
           ${kpi('Дефектных единиц', displayNumber(defectTotal, 0), `${state.skus.reduce((sum, sku) => sum + sku.defects.length, 0)} записей`)}
         </div>
-        <section class="card card-pad">
-          <div class="section-head"><div><h3 class="card-title">Завершение приёмки</h3><p class="card-subtitle">Эти значения переносятся в расчёт времени итоговой таблицы.</p></div></div>
-          <div class="timer-grid">
-            ${timerCard('Окончание приёмки', 'acceptanceEnd', 'Время завершения контроля по поставке.')}
-            ${timerCard('Отчёт заполнен', 'reportEnd', 'Время завершения заполнения отчёта.')}
-            <div class="timer-card"><span>Продолжительность</span><strong class="timer-value" data-duration-display="total">${formatDuration(s.connectionTime || s.acceptanceStart, s.reportEnd)}</strong><div class="summary-list"><div class="summary-row"><span>Приёмка</span><strong data-duration-display="acceptance">${formatDuration(s.acceptanceStart || s.connectionTime, s.acceptanceEnd)}</strong></div><div class="summary-row"><span>Заполнение отчёта</span><strong data-duration-display="report">${formatDuration(s.acceptanceEnd, s.reportEnd)}</strong></div></div></div>
-          </div>
-        </section>
+        ${(() => {
+          const timingProgress = completionTimesProgress();
+          return renderAdaptiveSection({
+            key: completedSectionKey('summary', 'timing'),
+            title: 'Завершение приёмки',
+            subtitle: 'Эти значения переносятся в расчёт времени итоговой таблицы.',
+            complete: timingProgress.complete,
+            progress: timingProgress.percent,
+            content: `<div class="timer-grid">
+              ${timerCard('Окончание приёмки', 'acceptanceEnd', 'Время завершения контроля по поставке.')}
+              ${timerCard('Отчёт заполнен', 'reportEnd', 'Время завершения заполнения отчёта.')}
+              <div class="timer-card"><span>Продолжительность</span><strong class="timer-value" data-duration-display="total">${formatDuration(s.connectionTime || s.acceptanceStart, s.reportEnd)}</strong><div class="summary-list"><div class="summary-row"><span>Приёмка</span><strong data-duration-display="acceptance">${formatDuration(s.acceptanceStart || s.connectionTime, s.acceptanceEnd)}</strong></div><div class="summary-row"><span>Заполнение отчёта</span><strong data-duration-display="report">${formatDuration(s.acceptanceEnd, s.reportEnd)}</strong></div></div></div>
+            </div>`,
+          });
+        })()}
         <div class="summary-grid">
           <section class="card card-pad">
             <div class="section-head"><div><h3 class="card-title">Сводка</h3><p class="card-subtitle">Основные реквизиты и заполненность товаров.</p></div></div>
@@ -1483,6 +1588,10 @@
       }
       const card = el.closest('.question-card');
       if (card) card.classList.toggle('is-complete', value !== '');
+      const currentStep = STEP_GROUPS[state.ui.checkStep];
+      if (skuIndex === state.ui.currentSku && currentStep && getStepState(state.skus[skuIndex], currentStep.id) !== 'done') {
+        delete completedSectionStore()[completedSectionKey('checklist', state.skus[skuIndex]?.id || skuIndex, currentStep.id)];
+      }
       refreshChecklistChrome();
       return;
     }
@@ -1505,8 +1614,8 @@
       el.classList.remove('shipment-validation-error');
       if (!el.classList.contains('is-invalid')) el.setAttribute('aria-invalid', 'false');
     }
-    if (el.dataset.timeText !== undefined) { commitTimeInput(el, el.value); return; }
-    if (el.dataset.timePicker !== undefined) { commitTimeInput(el, el.value); return; }
+    if (el.dataset.timeText !== undefined) { const committed = commitTimeInput(el, el.value); if (committed) debounceRender(); return; }
+    if (el.dataset.timePicker !== undefined) { const committed = commitTimeInput(el, el.value); if (committed) debounceRender(); return; }
     if (el.dataset.rcCombobox !== undefined) {
       const bestMatch = findBestRcMatch(el.value);
       if (bestMatch) el.value = bestMatch.name;
@@ -1514,7 +1623,7 @@
       scheduleSave(); updateGlobalProgress(); updateWorkspaceTabStatus(); render(); updateLiveRcClock();
       return;
     }
-    if (el.dataset.field) { setPath(el.dataset.field, el.value); if (el.dataset.field === 'shipment.date') synchronizeAllTimesToDate(el.value); scheduleSave(); updateGlobalProgress(); updateWorkspaceTabStatus(); if (el.dataset.field === 'shipment.rc') { render(); updateLiveRcClock(); } return; }
+    if (el.dataset.field) { setPath(el.dataset.field, el.value); if (el.dataset.field === 'shipment.date') synchronizeAllTimesToDate(el.value); scheduleSave(); updateGlobalProgress(); updateWorkspaceTabStatus(); if (el.dataset.field === 'shipment.rc') { render(); updateLiveRcClock(); } else if (state.ui.page === 'shipment') debounceRender(); return; }
     if (el.dataset.skuField !== undefined) {
       const skuIndex = Number(el.dataset.sku);
       const sku = state.skus[skuIndex];
@@ -1533,6 +1642,15 @@
       updateGlobalProgress();
       updateProductAssistant(skuIndex);
       updateSkuStatusChrome(skuIndex);
+      if ((state.ui.page === 'products' && ['ready', 'ready-warning'].includes(getSkuStatus(state.skus[skuIndex], skuIndex).key)) || state.ui.page === 'summary') debounceRender();
+      return;
+    }
+    if (el.dataset.answerValue !== undefined) {
+      const skuIndex = Number(el.dataset.sku);
+      const sku = state.skus[skuIndex];
+      const step = STEP_GROUPS[state.ui.checkStep];
+      const sectionKey = completedSectionKey('checklist', sku?.id || skuIndex, step?.id);
+      if (sku && step && getStepState(sku, step.id) === 'done' && !isCompletedSectionExpanded(sectionKey)) debounceRender();
       return;
     }
     if (el.dataset.defectField) {
@@ -1551,6 +1669,7 @@
     const sku = state.skus[index];
     if (!sku) return;
     const status = getSkuStatus(sku, index);
+    if (!['ready', 'ready-warning'].includes(status.key)) delete completedSectionStore()[completedSectionKey('product', sku.id || index)];
     const card = document.querySelector(`[data-product-card="${index}"]`);
     if (card) {
       [...card.classList].filter(cls => cls.startsWith('sku-status-')).forEach(cls => card.classList.remove(cls));
@@ -1673,6 +1792,23 @@
     const button = event.target.closest('[data-action]');
     if (!button) return;
     const action = button.dataset.action;
+    if (action === 'toggle-completed-section') {
+      const key = button.dataset.sectionKey;
+      const section = button.closest('[data-adaptive-section]');
+      if (!key || !section) return;
+      const willExpand = section.classList.contains('is-collapsed');
+      completedSectionStore()[key] = willExpand;
+      section.classList.toggle('is-collapsed', !willExpand);
+      section.classList.toggle('is-expanded', willExpand);
+      section.querySelectorAll('[data-action="toggle-completed-section"]').forEach(toggle => {
+        toggle.setAttribute('aria-expanded', String(willExpand));
+        const text = toggle.querySelector('span');
+        if (text) text.textContent = willExpand ? 'Свернуть' : 'Развернуть';
+      });
+      scheduleSave();
+      if (willExpand) setTimeout(() => section.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 30);
+      return;
+    }
     if (action === 'toggle-workspace') {
       const panel = document.getElementById('workspaceBar');
       const open = !panel?.classList.contains('open');
@@ -1683,10 +1819,19 @@
     }
     if (action === 'focus-product') {
       const index = Number(button.dataset.sku);
-      const card = document.querySelector(`[data-product-card="${index}"]`);
-      card?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      card?.classList.add('is-highlighted');
-      setTimeout(() => card?.classList.remove('is-highlighted'), 1100);
+      const sku = state.skus[index];
+      const sectionKey = completedSectionKey('product', sku?.id || index);
+      if (sku && ['ready', 'ready-warning'].includes(getSkuStatus(sku, index).key) && !isCompletedSectionExpanded(sectionKey)) {
+        completedSectionStore()[sectionKey] = true;
+        scheduleSave();
+        render();
+      }
+      setTimeout(() => {
+        const card = document.querySelector(`[data-product-card="${index}"]`);
+        card?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        card?.classList.add('is-highlighted');
+        setTimeout(() => card?.classList.remove('is-highlighted'), 1100);
+      }, 20);
       return;
     }
     if (action === 'select-checklist') { switchChecklist(button.dataset.checklistId); return; }
@@ -1784,6 +1929,12 @@
       const comment = status === 'na' ? '' : current.comment;
       updateAnswer(skuIndex, code, { status, time, comment });
       applyAnswerStatusWithoutRender(button, skuIndex, code, status, time, comment);
+      const currentSku = state.skus[skuIndex];
+      const currentStep = STEP_GROUPS[state.ui.checkStep];
+      const sectionKey = completedSectionKey('checklist', currentSku?.id || skuIndex, currentStep?.id);
+      if (skuIndex === state.ui.currentSku && currentStep && getStepState(currentSku, currentStep.id) === 'done' && !isCompletedSectionExpanded(sectionKey)) {
+        setTimeout(render, 40);
+      }
     }
     if (action === 'copy-defect-type-to-visual') {
       const skuIndex = Number(button.dataset.sku);
@@ -1817,7 +1968,7 @@
     if (action === 'add-defect') { const sku = state.skus[state.ui.currentSku]; if (sku && sku.defects.length < MAX_DEFECTS) { sku.defects.push({ type: '', visual: '', count: '', severity: 'defect', comment: '' }); scheduleSave(); render(); } }
     if (action === 'remove-defect') { const sku = state.skus[Number(button.dataset.sku)]; const index = Number(button.dataset.defect); if (sku && confirm('Удалить запись о дефекте?')) { sku.defects.splice(index, 1); scheduleSave(); render(); } }
     if (action === 'clear-defect-filters') { state.ui.defectSearch = ''; state.ui.defectSeverity = 'all'; scheduleSave(); render(); }
-    if (action === 'set-time') { const key = button.dataset.timeKey; state.shipment[key] = nowLocalInput(); scheduleSave(); const input = button.closest('.timer-card')?.querySelector('[data-time-text]'); if (input) syncTimeControl(input, timeOnly(state.shipment[key])); updateGlobalProgress(); updateDurationDisplays(); }
+    if (action === 'set-time') { const key = button.dataset.timeKey; state.shipment[key] = nowLocalInput(); scheduleSave(); const input = button.closest('.timer-card')?.querySelector('[data-time-text]'); if (input) syncTimeControl(input, timeOnly(state.shipment[key])); updateGlobalProgress(); updateDurationDisplays(); debounceRender(); }
     if (action === 'request-export') requestExport(button.dataset.exportType || 'old');
     if (action === 'download-backup') downloadBackup();
     if (action === 'new-acceptance') newAcceptance();

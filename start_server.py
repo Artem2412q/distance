@@ -599,7 +599,7 @@ def main():
     if server is None:
         server = ThreadingHTTPServer(("127.0.0.1", 0), QualityHandler)
     port = server.server_address[1]
-    url = f"http://127.0.0.1:{port}/index.html?v=54"
+    url = f"http://127.0.0.1:{port}/index.html?v=59"
     print("=" * 68)
     print("Дистанционная Приёмка v54 запущена — текстовая визуальная оценка дефектов")
     print(url)
