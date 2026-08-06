@@ -9,11 +9,11 @@
   <meta name="description" content="Дистанционная приёмка: до 5 параллельных чек-листов РЦ, точное время и выгрузка Excel." />
   <title>Дистанционная Приёмка — Магнит</title>
   <base href="./" />
-  <link rel="manifest" href="./manifest.webmanifest?v=60" />
-  <link rel="stylesheet" href="./styles.css?v=60" />
-  <link rel="stylesheet" href="./magnit-corporate.css?v=60" />
-  <link rel="stylesheet" href="./contrast-audit.css?v=60" />
-  <link rel="stylesheet" href="./v57-readability.css?v=60" />
+  <link rel="manifest" href="./manifest.webmanifest?v=61" />
+  <link rel="stylesheet" href="./styles.css?v=61" />
+  <link rel="stylesheet" href="./magnit-corporate.css?v=61" />
+  <link rel="stylesheet" href="./contrast-audit.css?v=61" />
+  <link rel="stylesheet" href="./v57-readability.css?v=61" />
 </head>
 <body class="auth-locked">
   <!-- Visible Magnit logos are embedded as data URIs for reliable GitHub Pages rendering. -->
@@ -190,11 +190,19 @@
   <div class="theme-studio-backdrop" id="themeStudioBackdrop" hidden>
     <section class="theme-studio" role="dialog" aria-modal="true" aria-labelledby="themeStudioTitle">
       <header class="theme-studio-header">
-        <div><span class="eyebrow">Оформление интерфейса</span><h2 id="themeStudioTitle">Расширенные темы</h2><p>Готовые варианты и точная настройка каждого участка. Рабочие данные чек-листов не изменяются.</p></div>
-        <div class="theme-studio-header-actions"><span class="theme-current-chip">Сейчас: <strong id="themeCurrentLabel">Магнит · тёплая светлая</strong></span><button class="icon-button" id="themeStudioClose" type="button" aria-label="Закрыть темы">×</button></div>
+        <div class="theme-studio-heading"><span class="theme-studio-icon" aria-hidden="true">◈</span><div><span class="eyebrow">Персонализация рабочего пространства</span><h2 id="themeStudioTitle">Студия оформления</h2><p>Выберите готовую тему или настройте палитру вручную. Данные приёмки и структура Excel не изменяются.</p></div></div>
+        <div class="theme-studio-header-actions"><span class="theme-current-chip">Активна: <strong id="themeCurrentLabel">Магнит · тёплая светлая</strong></span><button class="icon-button theme-studio-close" id="themeStudioClose" type="button" aria-label="Закрыть темы">×</button></div>
       </header>
       <div class="theme-studio-layout">
-        <aside class="theme-preset-panel"><div class="theme-panel-heading"><span>Готовые варианты</span><small>Предпросмотр без автосохранения</small></div><div class="theme-preset-list" id="themePresetList"></div></aside>
+        <aside class="theme-preset-panel">
+          <div class="theme-library-header"><div><span class="eyebrow">Библиотека</span><strong>Готовые темы</strong></div><span class="theme-library-count"><b id="themeVisibleCount">0</b> вариантов</span></div>
+          <div class="theme-mode-tabs" role="tablist" aria-label="Категория тем">
+            <button type="button" role="tab" class="active" data-theme-mode-filter="light" aria-selected="true"><span>☀</span>Светлые <b id="themeLightCount">0</b></button>
+            <button type="button" role="tab" data-theme-mode-filter="dark" aria-selected="false"><span>◐</span>Тёмные <b id="themeDarkCount">0</b></button>
+          </div>
+          <label class="theme-search"><span aria-hidden="true">⌕</span><input id="themeSearch" type="search" placeholder="Найти тему" autocomplete="off"><kbd>Ctrl K</kbd></label>
+          <div class="theme-preset-list" id="themePresetList"></div>
+        </aside>
         <main class="theme-studio-content" id="themeStudioControls"></main>
       </div>
       <footer class="theme-studio-footer"><div class="theme-studio-status" id="themeStudioStatus" aria-live="polite">Сохранённая тема активна</div><div class="theme-studio-footer-actions"><button class="button button-ghost" id="themeStudioReset" type="button">Вернуть исходный пресет</button><button class="button button-ghost" id="themeStudioImportButton" type="button">Импорт</button><input id="themeStudioImport" type="file" accept="application/json,.json" hidden><button class="button button-secondary" id="themeStudioExport" type="button">Экспорт</button><button class="button button-primary" id="themeStudioSave" type="button">Сохранить тему</button></div></footer>
@@ -211,10 +219,10 @@
     </div>
   </div>
 
-  <script src="./vendor/exceljs.min.js?v=60"></script>
-  <script src="./template-data.js?v=60"></script>
-  <script src="./old-template-data.js?v=60"></script>
-  <script src="./theme-studio.js?v=60"></script>
-  <script src="./app.js?v=60"></script>
+  <script src="./vendor/exceljs.min.js?v=61"></script>
+  <script src="./template-data.js?v=61"></script>
+  <script src="./old-template-data.js?v=61"></script>
+  <script src="./theme-studio.js?v=61"></script>
+  <script src="./app.js?v=61"></script>
 </body>
 </html>
