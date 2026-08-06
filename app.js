@@ -634,7 +634,7 @@
     const defectRows = Array.isArray(sku.defects) ? sku.defects : [];
     const completedDefectRows = defectRows.filter(isDefectRowComplete).length;
     const hasDefectUnits = defectRows.some(row => numeric(row.count) > 0);
-    const categoryMass = numeric(sku.defectMass) + numeric(sku.nonstandardMass) + numeric(sku.debrisMass) + numeric(sku.caliberMass);
+    const categoryMass = numeric(sku.defectMass) + numeric(sku.nonstandardMass) + numeric(sku.caliberMass) + numeric(sku.debrisMass);
     const sampleMass = numeric(sku.sampleMass);
     const identityDone = Number(Boolean(String(sku.code || '').trim())) + Number(Boolean(String(sku.name || '').trim()));
     const brixRequired = Boolean(sku.requiresBrix);
@@ -789,7 +789,7 @@
       if (!sku.code.trim()) errors.push(`${label}: не указан код товара.`);
       if (!sku.name.trim()) errors.push(`${label}: не указано название.`);
       if (numeric(sku.sampleMass) <= 0) errors.push(`${getSkuLabel(sku, index)}: масса выборки должна быть больше нуля.`);
-      const categoryMass = numeric(sku.defectMass) + numeric(sku.nonstandardMass) + numeric(sku.debrisMass) + numeric(sku.caliberMass);
+      const categoryMass = numeric(sku.defectMass) + numeric(sku.nonstandardMass) + numeric(sku.caliberMass) + numeric(sku.debrisMass);
       if (numeric(sku.sampleMass) > 0 && categoryMass > numeric(sku.sampleMass) + 0.0001) errors.push(`${getSkuLabel(sku, index)}: сумма масс категорий превышает массу выборки.`);
       if (sku.requiresBrix && !String(sku.brixValues || '').trim()) errors.push(`${getSkuLabel(sku, index)}: включён замер Brix, но значения не указаны.`);
       else if (sku.requiresBrix && !isValidBrixValues(sku.brixValues)) errors.push(`${getSkuLabel(sku, index)}: значения Brix должны быть записаны через \\, например 9.9\\8.9\\10.6.`);
@@ -1268,12 +1268,12 @@
 
   function massAssistantMarkup(sku, index) {
     const sample = numeric(sku.sampleMass);
-    const categories = numeric(sku.defectMass) + numeric(sku.nonstandardMass) + numeric(sku.debrisMass) + numeric(sku.caliberMass);
+    const categories = numeric(sku.defectMass) + numeric(sku.nonstandardMass) + numeric(sku.caliberMass) + numeric(sku.debrisMass);
     const issues = [];
     if (!String(sku.vpt || '').trim()) issues.push('Заполните ВПТ перед выгрузкой Excel.');
     if (sample <= 0) issues.push('Укажите итоговую массу выборки — она обязательна для Excel.');
     if (sample > 0 && categories > sample + 0.0001) issues.push('Сумма категорий превышает массу выборки. Перепроверьте взвешивание.');
-    if (sample > 0 && categories === 0) issues.push('Категории пока нулевые. Подтвердите, что брак, нестандарт, осыпь и некалибр отсутствуют.');
+    if (sample > 0 && categories === 0) issues.push('Категории пока нулевые. Подтвердите, что брак, нестандарт, некалибр и осыпь отсутствуют.');
     if (sku.requiresBrix && !String(sku.brixValues || '').trim()) issues.push('Введите результаты замера Brix, например 9.9\\8.9\\10.6.');
     else if (sku.requiresBrix && !isValidBrixValues(sku.brixValues)) issues.push('Исправьте формат Brix: только числа, разделённые обратной косой чертой.');
     const ready = sample > 0 && categories <= sample + 0.0001 && (!sku.requiresBrix || isValidBrixValues(sku.brixValues));
@@ -1283,7 +1283,7 @@
   function renderFinalMasses() {
     const index = Math.min(state.ui.currentSku || 0, state.skus.length - 1);
     const sku = state.skus[index];
-    const total = numeric(sku.defectMass) + numeric(sku.nonstandardMass) + numeric(sku.debrisMass) + numeric(sku.caliberMass);
+    const total = numeric(sku.defectMass) + numeric(sku.nonstandardMass) + numeric(sku.caliberMass) + numeric(sku.debrisMass);
     const quality = Math.max(0, numeric(sku.sampleMass) - total);
     return `<section class="card card-pad final-mass-section">
       <div class="section-head"><div><span class="eyebrow">Финальный этап</span><h3 class="card-title">Итоговые массы и категории</h3><p class="card-subtitle">Заполните после завершения контроля. Показана одна товарная позиция — длинный список листать не нужно.</p></div><span class="viz-badge">${index + 1} / ${state.skus.length}</span></div>
@@ -1295,8 +1295,8 @@
           ${measureCard('Масса выборки', index, 'sampleMass', sku.sampleMass)}
           ${measureCard('Брак', index, 'defectMass', sku.defectMass)}
           ${measureCard('Нестандарт', index, 'nonstandardMass', sku.nonstandardMass)}
-          ${measureCard('Осыпь / листья / земля', index, 'debrisMass', sku.debrisMass)}
           ${measureCard('Некалибр', index, 'caliberMass', sku.caliberMass)}
+          ${measureCard('Осыпь / листья / земля', index, 'debrisMass', sku.debrisMass)}
         </div>
         ${sku.requiresBrix ? `<div class="brix-entry-row">
           <div class="brix-entry-copy"><span class="eyebrow">Активный замер</span><strong>Значения Brix</strong><small>Введите результаты подряд через обратную косую черту. Также можно использовать «/», пробел или «;» — разделитель преобразуется автоматически.</small></div>
@@ -1305,8 +1305,8 @@
         <div class="kpi-grid final-mass-kpis">
           <div class="kpi"><span>Брак</span><strong data-percent-output="defectMass">${formatPercent(percent(sku.defectMass, sku.sampleMass))}</strong><small>от выборки</small></div>
           <div class="kpi"><span>Нестандарт</span><strong data-percent-output="nonstandardMass">${formatPercent(percent(sku.nonstandardMass, sku.sampleMass))}</strong><small>от выборки</small></div>
-          <div class="kpi"><span>Осыпь</span><strong data-percent-output="debrisMass">${formatPercent(percent(sku.debrisMass, sku.sampleMass))}</strong><small>от выборки</small></div>
           <div class="kpi"><span>Некалибр</span><strong data-percent-output="caliberMass">${formatPercent(percent(sku.caliberMass, sku.sampleMass))}</strong><small>от выборки</small></div>
+          <div class="kpi"><span>Осыпь</span><strong data-percent-output="debrisMass">${formatPercent(percent(sku.debrisMass, sku.sampleMass))}</strong><small>от выборки</small></div>
           <div class="kpi"><span>Категории всего</span><strong data-mass-total>${displayNumber(total, 3)} кг</strong><small>${formatPercent(percent(total, sku.sampleMass))}</small></div>
           <div class="kpi"><span>Категория качества</span><strong data-quality-mass>${displayNumber(quality, 3)} кг</strong><small>остаток выборки</small></div>
         </div>
@@ -1377,7 +1377,7 @@
     const sku = state.skus[skuIndex];
     if (!sku) return;
     const roots = document.querySelectorAll(`[data-product-card="${skuIndex}"], [data-final-mass-card="${skuIndex}"]`);
-    const massFields = ['defectMass', 'nonstandardMass', 'debrisMass', 'caliberMass'];
+    const massFields = ['defectMass', 'nonstandardMass', 'caliberMass', 'debrisMass'];
     const total = massFields.reduce((sum, field) => sum + numeric(sku[field]), 0);
     const quality = Math.max(0, numeric(sku.sampleMass) - total);
     roots.forEach(root => {
@@ -2012,6 +2012,8 @@
     if (reportAnchor !== null && reportEnd !== null) while (reportEnd < reportAnchor) reportEnd += 1;
     ws.getCell('D2').value = connectionStart ?? null; if (connectionStart !== null) ws.getCell('D2').numFmt = 'hh:mm';
     ws.getCell('K70').value = reportEnd ?? null; if (reportEnd !== null) ws.getCell('K70').numFmt = 'hh:mm';
+    // В Excel физический порядок столбцов остаётся прежним: M выборка, N брак, O нестандарт, P осыпь, Q калибр.
+    // Порядок карточек на сайте не влияет на адреса выгрузки.
     const summaryColumns = ['C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','X','AA','AB'];
     const statusCols = ['J','Q','X','AE','AL']; const timeCols = ['K','R','Y','AF','AM']; const commentCols = ['L','S','Z','AG','AN'];
     const defectCols = [{ type: 'J', visual: 'L', count: 'N', comment: 'O' }, { type: 'Q', visual: 'S', count: 'U', comment: 'V' }, { type: 'X', visual: 'Z', count: 'AB', comment: 'AC' }, { type: 'AE', visual: 'AG', count: 'AI', comment: 'AJ' }, { type: 'AL', visual: 'AN', count: 'AP', comment: 'AQ' }];

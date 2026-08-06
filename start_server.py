@@ -67,6 +67,10 @@ def sanitize_core_properties(data):
 def number_or_blank(value):
     if value in (None, ""):
         return None
+    try:
+        return float(str(value).replace(",", "."))
+    except (TypeError, ValueError):
+        return None
 
 
 def normalize_brix_values(value):
@@ -87,10 +91,6 @@ def normalize_brix_values(value):
         if part:
             parts.append(part)
     return "\\".join(parts)
-    try:
-        return float(str(value).replace(",", "."))
-    except (TypeError, ValueError):
-        return None
 
 
 def local_status(value):
@@ -280,6 +280,8 @@ def build_updates(state, export_type="new"):
     while len(skus) < MAX_SKU:
         skus.append(None)
 
+    # Физический порядок Excel не меняем: M выборка, N брак, O нестандарт, P осыпь, Q калибр.
+    # Новый порядок карточек на сайте не должен менять адреса выгрузки.
     summary_cols = ["C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "X", "AA", "AB"]
     status_cols = ["J", "Q", "X", "AE", "AL"]
     time_cols = ["K", "R", "Y", "AF", "AM"]
