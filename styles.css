@@ -5909,3 +5909,35 @@ body { font-size: clamp(13.3px, calc(14px * var(--font-scale)), 15.12px); }
     max-height: 168px !important;
   }
 }
+
+/* v65 — keyboard-first data entry */
+.keyboard-flow-hint {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--muted, #687386);
+}
+.keyboard-flow-hint kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  min-height: 24px;
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-bottom-width: 2px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--surface, #fff) 88%, currentColor 12%);
+  color: var(--text, #18202b);
+  font: 600 11px/1 system-ui, sans-serif;
+  box-shadow: 0 1px 0 color-mix(in srgb, currentColor 12%, transparent);
+}
+.final-measure-grid input[data-summary-tab-order]:focus-visible,
+.brix-values-input[data-summary-tab-order]:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent, #d52b1e) 38%, transparent);
+  outline-offset: 2px;
+  border-color: var(--accent, #d52b1e);
+}

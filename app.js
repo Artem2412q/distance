@@ -1240,7 +1240,8 @@
     const suffix = options.suffix || 'кг';
     const step = options.step || '0.001';
     const placeholder = options.placeholder || '';
-    return `<div class="measure-card"><label>${escapeHtml(label)}</label><div class="input-group"><input class="input" inputmode="decimal" type="number" min="0" step="${escapeAttr(step)}" data-sku="${index}" data-sku-field="${key}" value="${escapeAttr(value ?? '')}" ${placeholder ? `placeholder="${escapeAttr(placeholder)}"` : ''}/><span class="input-suffix">${escapeHtml(suffix)}</span></div></div>`;
+    const tabOrder = ({ vpt: 10, sampleMass: 20, defectMass: 30, nonstandardMass: 40, caliberMass: 50, debrisMass: 60 })[key] || 999;
+    return `<div class="measure-card"><label>${escapeHtml(label)}</label><div class="input-group"><input class="input" inputmode="decimal" type="number" min="0" step="${escapeAttr(step)}" data-sku="${index}" data-sku-field="${key}" data-summary-tab-order="${tabOrder}" value="${escapeAttr(value ?? '')}" ${placeholder ? `placeholder="${escapeAttr(placeholder)}"` : ''}/><span class="input-suffix">${escapeHtml(suffix)}</span></div></div>`;
   }
 
   function renderProductCard(sku, index) {
@@ -1465,9 +1466,10 @@
           ${measureCard('Некалибр', index, 'caliberMass', sku.caliberMass)}
           ${measureCard('Осыпь / листья / земля', index, 'debrisMass', sku.debrisMass)}
         </div>
+        <div class="keyboard-flow-hint" aria-label="Подсказка по клавиатурной навигации"><kbd>Tab</kbd><span>следующее поле</span><i>·</i><kbd>Shift</kbd><span>+</span><kbd>Tab</kbd><span>назад</span></div>
         ${sku.requiresBrix ? `<div class="brix-entry-row">
           <div class="brix-entry-copy"><span class="eyebrow">Активный замер</span><strong>Значения Brix</strong><small>Введите результаты подряд через обратную косую черту. Также можно использовать «/», пробел или «;» — разделитель преобразуется автоматически.</small></div>
-          <div class="brix-entry-control"><input class="input brix-values-input" type="text" inputmode="text" autocomplete="off" spellcheck="false" data-sku="${index}" data-sku-field="brixValues" data-brix-values value="${escapeAttr(sku.brixValues || '')}" placeholder="9.9\\8.9\\10.6" aria-label="Значения Brix"/><span>Brix</span></div>
+          <div class="brix-entry-control"><input class="input brix-values-input" type="text" inputmode="text" autocomplete="off" spellcheck="false" data-sku="${index}" data-sku-field="brixValues" data-brix-values data-summary-tab-order="70" value="${escapeAttr(sku.brixValues || '')}" placeholder="9.9\\8.9\\10.6" aria-label="Значения Brix"/><span>Brix</span></div>
         </div>` : ''}
         <div class="kpi-grid final-mass-kpis">
           <div class="kpi"><span>Брак</span><strong data-percent-output="defectMass">${formatPercent(percent(sku.defectMass, sku.sampleMass))}</strong><small>от выборки</small></div>
@@ -1675,7 +1677,42 @@
   }
 
   let renderTimer = null;
-  function debounceRender() { clearTimeout(renderTimer); renderTimer = setTimeout(render, 180); }
+  function captureFocusState(element = document.activeElement) {
+    if (!element || element === document.body) return null;
+    const token = { start: null, end: null };
+    if (element.dataset?.skuField !== undefined) {
+      token.kind = 'sku-field'; token.sku = element.dataset.sku; token.field = element.dataset.skuField;
+    } else if (element.dataset?.field) {
+      token.kind = 'field'; token.field = element.dataset.field;
+    } else if (element.dataset?.timeText !== undefined) {
+      token.kind = 'time-text'; token.shipmentKey = element.dataset.timeShipmentKey || ''; token.sku = element.dataset.timeSku || ''; token.code = element.dataset.timeCode || '';
+    } else return null;
+    try { token.start = element.selectionStart; token.end = element.selectionEnd; } catch (_) {}
+    return token;
+  }
+  function restoreFocusState(token) {
+    if (!token) return;
+    let target = null;
+    if (token.kind === 'sku-field') target = document.querySelector(`[data-sku="${token.sku}"][data-sku-field="${token.field}"]`);
+    else if (token.kind === 'field') target = document.querySelector(`[data-field="${token.field}"]`);
+    else if (token.kind === 'time-text') {
+      if (token.shipmentKey) target = document.querySelector(`[data-time-text][data-time-shipment-key="${token.shipmentKey}"]`);
+      else if (token.sku && token.code) target = document.querySelector(`[data-time-text][data-time-sku="${token.sku}"][data-time-code="${token.code}"]`);
+    }
+    if (!target || target.disabled) return;
+    try { target.focus({ preventScroll: true }); } catch (_) { target.focus(); }
+    if (token.start !== null && token.end !== null) {
+      try { target.setSelectionRange(token.start, token.end); } catch (_) {}
+    }
+  }
+  function debounceRender() {
+    clearTimeout(renderTimer);
+    renderTimer = setTimeout(() => {
+      const focusState = captureFocusState();
+      render();
+      requestAnimationFrame(() => restoreFocusState(focusState));
+    }, 180);
+  }
 
   function handleChange(event) {
     if (!authenticated) return;
@@ -2402,8 +2439,25 @@
     handle.addEventListener('pointerup', event => { if (!dragState) return; dragState = null; try { handle.releasePointerCapture(event.pointerId); } catch (_) {} scheduleSave(); });
   }
 
+  function moveSummaryTabFocus(event, element) {
+    if (state.ui.page !== 'summary' || element?.dataset?.summaryTabOrder === undefined || event.key !== 'Tab') return false;
+    const fields = [...document.querySelectorAll('[data-summary-tab-order]')]
+      .filter(field => !field.disabled && field.offsetParent !== null)
+      .sort((a, b) => Number(a.dataset.summaryTabOrder) - Number(b.dataset.summaryTabOrder));
+    const currentIndex = fields.indexOf(element);
+    if (currentIndex < 0) return false;
+    const nextIndex = currentIndex + (event.shiftKey ? -1 : 1);
+    if (nextIndex < 0 || nextIndex >= fields.length) return false;
+    event.preventDefault();
+    const next = fields[nextIndex];
+    try { next.focus({ preventScroll: true }); } catch (_) { next.focus(); }
+    next.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+    return true;
+  }
+
   function handleKeydown(event) {
     const el = event.target;
+    if (moveSummaryTabFocus(event, el)) return;
     if (event.key === 'Escape') {
       const workspacePanel = document.getElementById('workspaceBar');
       if (workspacePanel?.classList.contains('open')) { closeWorkspacePanel(); document.getElementById('workspaceToggle')?.focus(); return; }
