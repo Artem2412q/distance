@@ -5121,7 +5121,7 @@ html:is([data-theme-preset="rainbow"],[data-theme-preset="custom"][data-theme-ba
   .product-head-actions .button-row .button { width: 100%; }
 }
 
-/* v59 — адаптивные разделы: завершённые на 100% блоки сворачиваются. */
+/* v64 — адаптивные разделы: завершённые блоки остаются открытыми; сворачивание только вручную. */
 .adaptive-section {
   transition: border-color .18s var(--ease), box-shadow .18s var(--ease), background .18s var(--ease);
 }
@@ -5825,4 +5825,87 @@ body { font-size: clamp(13.3px, calc(14px * var(--font-scale)), 15.12px); }
   .theme-mode-tabs button span { display: none; }
   .theme-setting-field { grid-template-columns: 1fr; }
   .theme-setting-field select { width: 100%; }
+}
+
+/* ======================================================================
+   v63 — фикс растягивания правой части «Студии оформления»
+   Grid в .theme-studio-content мог отдавать первой auto-строке всю
+   доступную высоту при определённом browser zoom / viewport. Секции
+   справа теперь имеют естественную высоту и прокручиваются единым столбцом.
+   ====================================================================== */
+.theme-studio-content {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  justify-content: flex-start !important;
+  align-content: initial !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
+.theme-studio-content > * {
+  flex: 0 0 auto !important;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.theme-selection-hero {
+  height: auto !important;
+  min-height: 78px !important;
+  max-height: none !important;
+  flex: 0 0 auto !important;
+  align-self: stretch !important;
+}
+.theme-selection-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.theme-selection-palette {
+  flex: 0 0 auto;
+}
+.theme-preview {
+  width: 100%;
+  height: clamp(200px, 28dvh, 280px) !important;
+  min-height: 200px !important;
+  max-height: 280px !important;
+  flex: 0 0 auto !important;
+}
+.theme-preview-main,
+.theme-preview-content {
+  min-height: 0;
+}
+.theme-preview-content {
+  overflow: hidden;
+}
+.theme-preview-card {
+  max-height: 100%;
+}
+
+/* Высокий zoom обычно переводит окно в эти брейкпоинты. Не даём
+   предпросмотру съедать рабочую область и сохраняем прокрутку настроек. */
+@media (max-width: 1040px), (max-height: 760px) {
+  .theme-selection-hero { min-height: 68px !important; padding-block: 11px; }
+  .theme-preview {
+    height: clamp(178px, 25dvh, 230px) !important;
+    min-height: 178px !important;
+    max-height: 230px !important;
+  }
+}
+@media (max-width: 820px) {
+  .theme-selection-hero { min-height: 64px !important; }
+  .theme-preview {
+    height: 190px !important;
+    min-height: 190px !important;
+    max-height: 190px !important;
+  }
+}
+@media (max-width: 480px) {
+  .theme-selection-hero { min-height: 58px !important; }
+  .theme-preview {
+    height: 168px !important;
+    min-height: 168px !important;
+    max-height: 168px !important;
+  }
 }

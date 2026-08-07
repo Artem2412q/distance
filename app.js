@@ -700,7 +700,10 @@
     }
     return state.ui.expandedCompletedSections;
   }
-  function isCompletedSectionExpanded(key) { return Boolean(completedSectionStore()[key]); }
+  function isCompletedSectionExpanded(key) {
+    // Completed sections stay open by default. Only an explicit manual collapse stores `false`.
+    return completedSectionStore()[key] !== false;
+  }
   function adaptiveSectionExpanded(key, complete) {
     if (!complete) { delete completedSectionStore()[key]; return true; }
     return isCompletedSectionExpanded(key);
@@ -1217,7 +1220,7 @@
         ${timerCard('Начало приёмки', 'acceptanceStart', 'Можно зафиксировать отдельно от подключения.', { required: true })}
       </div>`,
     });
-    return `${pageHeading('Данные поставки', 'Заполненные на 100% разделы автоматически сворачиваются. Их всегда можно открыть повторно.', '<button class="button button-primary" data-page="products">К товарам →</button>')}
+    return `${pageHeading('Данные поставки', 'Заполненные разделы остаются открытыми. При необходимости их можно свернуть вручную.', '<button class="button button-primary" data-page="products">К товарам →</button>')}
       <div class="content-stack">
         <div class="notice notice-strong"><strong>Быстрый порядок:</strong> реквизиты → товары → чек-лист → дефекты → Excel. Поля сохраняются автоматически.</div>
         ${mainSection}
@@ -1364,7 +1367,7 @@
             return `<button class="step-button ${index === state.ui.checkStep ? 'active' : ''} ${status}" data-action="select-step" data-step="${index}"><span class="step-number">${index + 1}</span><span class="step-copy"><span class="step-label">${escapeHtml(item.short)}</span><small>${done} из ${stepQuestions.length}</small></span><span class="step-status ${status === 'done' ? 'done' : ''}">${status === 'done' ? '✓' : `${percent}%`}</span><i><b style="width:${percent}%"></b></i></button>`;
           }).join('')}</aside>
           <div class="check-main adaptive-step-section ${stepComplete ? 'is-complete' : 'is-incomplete'} ${stepExpanded ? 'is-expanded' : 'is-collapsed'}" data-adaptive-section="${escapeAttr(stepSectionKey)}" data-adaptive-complete="${stepComplete}">
-            ${stepComplete ? `<div class="adaptive-step-collapsed"><div><span class="adaptive-section-indicator is-complete">✓</span><div><span class="eyebrow">Шаг ${step.id + 1} из ${STEP_GROUPS.length}</span><h3>${escapeHtml(step.title)}</h3><p>Все ${questions.length} пунктов заполнены. Раздел скрыт, чтобы не занимать рабочее пространство.</p></div></div>${adaptiveSectionToggle(stepSectionKey, false, step.title)}</div>` : ''}
+            ${stepComplete ? `<div class="adaptive-step-collapsed"><div><span class="adaptive-section-indicator is-complete">✓</span><div><span class="eyebrow">Шаг ${step.id + 1} из ${STEP_GROUPS.length}</span><h3>${escapeHtml(step.title)}</h3><p>Все ${questions.length} пунктов заполнены. Раздел был свёрнут вручную.</p></div></div>${adaptiveSectionToggle(stepSectionKey, false, step.title)}</div>` : ''}
             <div class="adaptive-step-content">
             <div class="step-head"><div class="step-head-row"><div><span class="eyebrow">Шаг ${step.id + 1} из ${STEP_GROUPS.length}</span><h3>${escapeHtml(step.title)}</h3><p>${escapeHtml(step.description)}</p></div><div class="step-counter"><strong>${stepPercent}%</strong><small>${stepDone} из ${questions.length} · ${escapeHtml(getSkuLabel(sku, skuIndex))}</small></div></div><div class="step-progress-track"><i style="width:${stepPercent}%"></i></div><div class="step-quick-actions"><button class="button button-ghost button-small" data-action="complete-step">✓ Выполнить пункты шага</button><button class="button button-ghost button-small" data-action="go-unanswered">Найти незаполненное</button>${stepComplete ? adaptiveSectionToggle(stepSectionKey, true, step.title) : ''}</div></div>
             <div class="question-list">${questions.length ? questions.map(q => renderQuestion(sku, skuIndex, q)).join('') : '<div class="card empty-state"><strong>Контроль выключен</strong>Для этой товарной позиции на шаге нет активных пунктов.</div>'}</div>
